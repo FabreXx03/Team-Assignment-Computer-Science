@@ -9,7 +9,7 @@ from urllib.parse import urlencode
 # App Metadata & Config
 # ------------------------------
 st.set_page_config(page_title="Stock Comparator & Portfolio", layout="wide")
-st.title("📊 Stock & Portfolio Comparator")
+st.title("📊 Stock & Portfolio Comparator (yfinance)")
 
 st.caption(
     "Built with Streamlit + yfinance. Education-use only. Prices are adjusted for splits/dividends (auto_adjust=True)."
@@ -48,7 +48,13 @@ def perf_stats(prices: pd.DataFrame, rf: float = 0.0) -> pd.DataFrame:
 
 
 def norm_100(prices: pd.DataFrame) -> pd.DataFrame:
-    return prices / prices.iloc[0] * 100.0
+    """Normalize price columns so that the first available row equals 100.
+    Returns empty DataFrame if input is empty to avoid IndexError.
+    """
+    if prices is None or prices.empty:
+        return pd.DataFrame()
+    base = prices.iloc[0].replace(0, np.nan)
+    return prices.divide(base) * 100.0
 
 
 def portfolio_series(prices: pd.DataFrame, weights: pd.Series) -> pd.Series:
@@ -183,6 +189,9 @@ if prices.empty:
 
 # Align dates & drop rows with any NA
 prices = prices.dropna(how="any")
+if prices.empty:
+    st.warning("No rows left after cleaning. Try a wider date range, a different interval (e.g., 1wk), or other tickers.")
+    st.stop()
 
 # ------------------------------
 # KPIs
