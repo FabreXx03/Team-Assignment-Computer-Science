@@ -9,7 +9,7 @@ from urllib.parse import urlencode
 # App Metadata & Config
 # ------------------------------
 st.set_page_config(page_title="Stock Comparator & Portfolio", layout="wide")
-st.title("📊 Stock & Portfolio Comparator (yfinance)")
+st.title("📊 Stock & Portfolio Comparator")
 
 st.caption(
     "Built with Streamlit + yfinance. Education-use only. Prices are adjusted for splits/dividends (auto_adjust=True)."
