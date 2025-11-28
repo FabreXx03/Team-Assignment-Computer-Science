@@ -73,7 +73,7 @@ def prepare_regression_data(series, window=21):
     if isinstance(series, pd.DataFrame):
         df = series.copy()
         if len(df.columns) > 0:
-            df.columns = ['Close']
+            df.columns = ['Close'] # Rename the column to 'Close' for consistency
     else:
         df = series.to_frame(name='Close') 
         
