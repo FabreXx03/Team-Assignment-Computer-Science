@@ -1,4 +1,4 @@
-     # -----------------------------------------------------------------------------
+   # -----------------------------------------------------------------------------
 # IMPORTS & CONFIGURATION
 # -----------------------------------------------------------------------------
 
@@ -69,14 +69,21 @@ def prepare_regression_data(series, window=21):
     For the Machine Learning part, we want to predict next-day absolute return (volatility) of a stock.
     We use the absolute returns of the last trading month (21 days) for this.
     """
-    df = series.to_frame(name='Close') # We convert the input (series) to a DataFrame
-    df['Abs_Return'] = df['Close'].pct_change().abs() # We calculate the absolute daily returns
-    df['Target'] = df['Abs_Return'].shift(-1) # We create a new DataFrame to predict tomorrow's volatility using today's data
-    for i in range(1, window + 1): # We start a loop which will run 21 times
-        df[f'Vol_Lag_{i}'] = df['Abs_Return'].shift(i) # We create new columns for the volatility of each day  
-    df = df.dropna() # We remove any row that has missing data to avoid a crash of the model
-    feature_cols = [f'Vol_Lag_{i}' for i in range(1, window + 1)] # This creates a list of the column names we created
-    return df[feature_cols], df['Target'] # The function returns two separate tables, one containing the lag-columns, one containing the "Target". 
+    # Robust check: If input is already a DataFrame, use it directly. If Series, convert.
+    if isinstance(series, pd.DataFrame):
+       df = series.copy()
+       if len(df.columns) > 0:
+          df.columns = ['Close']
+    else:
+      df = series.to_frame(name='Close') 
+      
+      df['Abs_Return'] = df['Close'].pct_change().abs() # We calculate the absolute daily returns
+      df['Target'] = df['Abs_Return'].shift(-1) # We create a new DataFrame to predict tomorrow's volatility using today's data
+      for i in range(1, window + 1): # We start a loop which will run 21 times
+          df[f'Vol_Lag_{i}'] = df['Abs_Return'].shift(i) # We create new columns for the volatility of each day  
+          df = df.dropna() # We remove any row that has missing data to avoid a crash of the model
+          feature_cols = [f'Vol_Lag_{i}' for i in range(1, window + 1)] # This creates a list of the column names we created
+          return df[feature_cols], df['Target'] # The function returns two separate tables, one containing the lag-columns, one containing the "Target". 
 
 # -----------------------------------------------------------------------------
 # SIDEBAR CONTROLS
