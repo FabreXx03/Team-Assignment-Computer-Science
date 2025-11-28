@@ -1,6 +1,9 @@
 # -----------------------------------------------------------------------------
 # IMPORTS & CONFIGURATION
 # -----------------------------------------------------------------------------
+
+# This application was built using Google Gemini. We created the base code in cooperation with Google Gemini, modified and commented the code ourselves.
+
 # We import the libraries we need.
 import streamlit as st # Streamlit is the framework we use to build the web app.
 import pandas as pd # Pandas is the tool we use for tabular data handling.
@@ -364,6 +367,7 @@ try:
         st.write("""
         This model predicts the **Exact Volatility** (Absolute Daily Return) for the next trading day.
         It uses the past 21 days of volatility to learn patterns using a Random Forest Regressor.
+        For the volatility prediction to function, you need to choose a data 
         """) # Description of the ML-part.
         
         # The user has to select a stock for the volatility forecasting
@@ -371,53 +375,47 @@ try:
         ml_ticker = st.selectbox("Select Stock to Predict", ml_opts, format_func=lambda x: smi_companies.get(x, x)) # We create a ticker to select the stocks. The lambda function makes sure that the full company names are shown instead of the ticker symbols.
         
         if ml_ticker:
-            # 2. Prepare Data
             subset_series = cleaned_df[ml_ticker]
             
-            # Use our new helper function for Regression
-            X, y = prepare_regression_data(subset_series)
+
+            X, y = prepare_regression_data(subset_series) # We use the helper function we defined earlier.
             
-            if len(X) > 50:
-                # 3. Split Data
-                split_index = int(len(X) * 0.8)
+            if len(X) > 50: # We use at least 50 data points (days) for the model.
+                split_index = int(len(X) * 0.8) # We split the model into 80% trainig data and 20% testing data
                 X_train, X_test = X.iloc[:split_index], X.iloc[split_index:]
                 y_train, y_test = y.iloc[:split_index], y.iloc[split_index:]
                 
-                # 4. Train Model (Random Forest Regressor)
-                model = RandomForestRegressor(n_estimators=100, random_state=42)
-                model.fit(X_train, y_train)
+                model = RandomForestRegressor(n_estimators=100, random_state=42) # We implement a regressor which uses 100 different analyses.
+                model.fit(X_train, y_train) # We train the model. It looks at the past volatility patterns (X_train) and the actual volatility of the next day (y_train).
                 
-                # 5. Evaluate
-                preds = model.predict(X_test)
-                mae = mean_absolute_error(y_test, preds)
+                preds = model.predict(X_test) # We make our prediction by taking the average of all 100 analyses.
+                mae = mean_absolute_error(y_test, preds) # We compute the mean absolute error.
                 
-                # Display Results
-                st.markdown(f"#### Volatility Forecast for **{smi_companies.get(ml_ticker, ml_ticker)}**")
+                st.markdown(f"#### Volatility Forecast for **{smi_companies.get(ml_ticker, ml_ticker)}**") # This renders a sub-header, including the picked stock.
                 
                 # Show the predicted volatility for the NEXT day (using the very latest data)
-                last_5_days = X.iloc[-1:].values
-                next_day_pred = model.predict(last_5_days)[0]
+                last_21_days = X.iloc[-1:].values # We grab the last rows of our table, which includes the volatility of the past few days.
+                next_day_pred = model.predict(last_21_days)[0] # The next day prediction is the last value.
                 
-                col1, col2 = st.columns(2)
+                col1, col2 = st.columns(2) # We create two columns to show the predicted volatility and the MAE.
                 col1.metric("Predicted Volatility (Next Day)", f"{next_day_pred:.2%}")
                 col2.metric("Mean Absolute Error (Test Set)", f"{mae:.2%}")
-                
-                # Visualization: Predicted vs Actual
-                # Create a DataFrame for plotting
+
+                # We create a DataFrame for the line chart.
                 results_df = pd.DataFrame({
-                    'Date': y_test.index,
-                    'Actual Volatility': y_test.values,
-                    'Predicted Volatility': preds
-                }).set_index('Date')
+                    'Date': y_test.index, # The calendar dates of the test set.
+                    'Actual Volatility': y_test.values, # The actual volatility that occured.
+                    'Predicted Volatility': preds # The volatility our model guessed.
+                }).set_index('Date') # The date column is the index so that it becomes the x-axis of the chart.
                 
-                st.write("**Predicted vs. Actual Volatility (Test Set):**")
-                st.line_chart(results_df)
+                st.write("**Predicted vs. Actual Volatility (Test Set):**") # We add this label above the graph.
+                st.line_chart(results_df) # We draw tha chart.
                 
-                st.caption("Lower MAE is better. If the lines overlap, the model is doing a good job.")
+                # We add a caption to the model, explaining how to interpret the values.
+                st.caption("The lower the ratio of MAE to Volatility, the more accurate our model is. If the lines overlap, the model is doing a good job.")
                 
             else:
-                st.warning("Not enough data. Try a longer date range.")
+                st.warning("Not enough data. Try a longer date range.") # If there is not enough data selected, this warning occurs.
 
 except Exception as e:
-    # st.error shows a red error box if something crashes
-    st.error(f"An error occurred: {e}")
+    st.error(f"An error occurred: {e}") # If there is any problem in the main app logic, this occurs.
