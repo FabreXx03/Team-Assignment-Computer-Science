@@ -1,4 +1,4 @@
-# -----------------------------------------------------------------------------
+     # -----------------------------------------------------------------------------
 # IMPORTS & CONFIGURATION
 # -----------------------------------------------------------------------------
 
@@ -375,7 +375,60 @@ try:
         ml_ticker = st.selectbox("Select Stock to Predict", ml_opts, format_func=lambda x: smi_companies.get(x, x)) # We create a ticker to select the stocks. The lambda function makes sure that the full company names are shown instead of the ticker symbols.
         
         if ml_ticker:
-            subset_series = cleaned_df[ml_ticker]
+            # We initialize a variable to store the data for the Machine Learning Model
+            ml_data = None
+            
+            # CHECK: Do we have enough data in the current view?
+            # 252 trading days = 1 year. This is a safe amount for a robust model.
+            # If the user selected a short period (e.g. 1 month), we fetch longer history in the background.
+            if len(cleaned_df) < 252:
+                extended_start = pd.Timestamp.today() - pd.DateOffset(months=12) # We set the start date to 12 months ago to get ~1 year of data.
+                
+                # CASE 1: The user selected "My Portfolio"
+                if ml_ticker == "💼 My Portfolio":
+                    # We need to re-download the components and re-calculate the portfolio for the extended period.
+                    if tickers: # Ensure we have tickers to download
+                        with st.spinner("Fetching extended history for Portfolio ML model..."): # Show a loading spinner
+                            # Download extended history for all components
+                            ext_stock_data = load_data(tickers, extended_start, pd.Timestamp.today())
+                            ext_clean = ext_stock_data.dropna()
+                            
+                            if not ext_clean.empty:
+                                # Re-calculate portfolio weights using the values from the sidebar
+                                current_total_w = sum(weights.values())
+                                if current_total_w == 0:
+                                     norm_weights = {t: 1.0/len(tickers) for t in tickers}
+                                else:
+                                     norm_weights = {t: weights[t]/current_total_w for t in tickers}
+                                
+                                # Create a list of weights aligned with the columns of the extended data
+                                w_list = [norm_weights[c] for c in ext_clean.columns]
+                                
+                                # Calculate portfolio returns
+                                ext_daily_ret = ext_clean.pct_change()
+                                ext_port_ret = ext_daily_ret.dot(w_list)
+                                
+                                # Create synthetic price series (start at 100)
+                                ext_port_price = (1 + ext_port_ret).cumprod() * 100
+                                ext_port_price.iloc[0] = 100
+                                
+                                ml_data = ext_port_price # Assign this new long series to ml_data
+                
+                # CASE 2: The user selected a regular stock (or Benchmark)
+                else:
+                    with st.spinner(f"Fetching extended history for {ml_ticker}..."):
+                        # Download extended history for just this one stock
+                        ext_df = load_data([ml_ticker], extended_start, pd.Timestamp.today())
+                        if not ext_df.empty:
+                            # Handle potential format issues (Series vs DataFrame)
+                            ml_data = ext_df[ml_ticker] if isinstance(ext_df, pd.DataFrame) else ext_df
+
+            # FALLBACK: If we didn't need extended data, or if the extended download failed, use the existing data.
+            if ml_data is None:
+                ml_data = cleaned_df[ml_ticker]
+
+            # Prepare the final series for the helper function
+            subset_series = ml_data.dropna()
             
 
             X, y = prepare_regression_data(subset_series) # We use the helper function we defined earlier.
