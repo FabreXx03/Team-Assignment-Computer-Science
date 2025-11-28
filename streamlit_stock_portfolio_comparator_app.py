@@ -73,7 +73,7 @@ def prepare_regression_data(series, window=21):
     if isinstance(series, pd.DataFrame):
         df = series.copy()
         if len(df.columns) > 0:
-            df.columns = ['Close'] # Rename the column to 'Close' for consistency
+            df.columns = ['Close']
     else:
         df = series.to_frame(name='Close') 
         
@@ -170,7 +170,13 @@ def load_data(ticker_list, start, end): # We define a function to download the d
     if not ticker_list:
         return pd.DataFrame() # If the list is empty, nothing is downloaded
     
-    data = yf.download(ticker_list, start=start, end=end, auto_adjust=True) # We download the data from yfinance. We use auto_adjust=True tu handle splits/dividends.
+    # CRITICAL CHANGE: We always download from a "safe start" (2 years ago) to ensure ML works.
+    # We will filter for the user's dates later for display purposes.
+    safe_start = pd.Timestamp.today() - pd.DateOffset(years=2)
+    # Use the earlier of the two dates (User's start or Safe start)
+    download_start = min(start, safe_start)
+    
+    data = yf.download(ticker_list, start=download_start, end=end, auto_adjust=True) # We download the data from yfinance. We use auto_adjust=True tu handle splits/dividends.
     
     # Formatting Fix for Single Ticker vs Multiple Tickers
     if len(ticker_list) == 1:
@@ -186,10 +192,11 @@ try:
     tickers_to_load = list(set(tickers + ["^SSMI"])) # The tickers that are selected are loaded. The SMI is always loaded.
 
     # 2. CALL THE FUNCTION
-    stock_df = load_data(tickers_to_load, start_date, end_date) # We create the DataFrame for the further analysis.
+    # Note: load_data now handles fetching extended history internally
+    full_history_df = load_data(tickers_to_load, pd.Timestamp(start_date), pd.Timestamp(end_date)) 
     
     # 3. CHECK IF DATA IS EMPTY
-    if stock_df.empty:
+    if full_history_df.empty:
         st.warning("No data found. Please check your date range.") # If the DataFrame is completely empty, a warning is shown. This should never be the case as the SMI is always loaded.
     else:
         if not tickers:
@@ -197,55 +204,63 @@ try:
         else:
             st.success(f"Data loaded successfully for {len(tickers_to_load)} tickers (including Benchmark)!") # If any stocks have been successfully selected, this message shows up.
         
-        # Raw Data Preview (Hidden by default)
-        with st.expander("📄 View Last 21 Trading Days"): # We show a preview of the loaded data, it is hidden by default. The data can also be downloaded.
-             preview_df = stock_df.rename(columns=lambda x: smi_companies.get(x, x)) # The lambda function makes sure that the full company names are shown instead of the ticker symbols.
+        # -----------------------------------------------------------------------------
+        # DATA PRE-PROCESSING & PORTFOLIO CALCULATION (ON FULL HISTORY)
+        # -----------------------------------------------------------------------------
+        # We calculate the portfolio on the FULL history first, so ML has enough data.
+        
+        # Drop rows with missing data
+        cleaned_df = full_history_df.dropna()
+        
+        valid_portfolio = False 
+        current_total = sum(weights.values())
+        
+        if tickers and not cleaned_df.empty and abs(current_total - 100.0) <= 0.1: 
+            valid_portfolio = True 
+    
+            selected_tickers = cleaned_df[tickers]
+            daily_returns = selected_tickers.pct_change()
+            final_weights = [weights[t] / 100.0 for t in tickers] 
+            
+            portfolio_ret = daily_returns.dot(final_weights) 
+            
+            # Construct Price Series (Start at 100 on the very first day of history)
+            my_portfolio_price = (1 + portfolio_ret).cumprod() * 100 
+            my_portfolio_price.iloc[0] = 100 
+            
+            cleaned_df["💼 My Portfolio"] = my_portfolio_price 
+
+        elif tickers and abs(current_total - 100.0) > 0.1:
+            st.warning("⚠️ 'My Portfolio' not calculated: Weights do not sum to 100%.")
+
+        # -----------------------------------------------------------------------------
+        # CREATE DISPLAY DATAFRAME (FILTERED BY USER DATE)
+        # -----------------------------------------------------------------------------
+        # Now we slice the data to show ONLY what the user asked for in the charts/tables
+        display_df = cleaned_df.loc[start_date:end_date]
+
+        # Raw Data Preview (Using Display DF)
+        with st.expander("📄 View Last 21 Trading Days"): 
+             preview_df = display_df.rename(columns=lambda x: smi_companies.get(x, x)) 
              st.dataframe(preview_df.tail(21))
              
-        csv_data = preview_df.to_csv().encode('utf-8') # We encode the data to a CSV-string to make it ready for the export
+        csv_data = preview_df.to_csv().encode('utf-8') 
              
-        st.download_button( # We create a button which allows to download the data
-            label="⬇️ Download Raw Price Data (CSV)", # This is the label of the download button
+        st.download_button( 
+            label="⬇️ Download Raw Price Data (CSV)", 
             data=csv_data, 
             file_name="stock_price_data.csv",
             mime="text/csv",
             help="Click to download the full historical price data as a CSV file."
         )
-             
-        # -----------------------------------------------------------------------------
-        # DATA PRE-PROCESSING & PORTFOLIO CALCULATION
-        # -----------------------------------------------------------------------------
-        cleaned_df = stock_df.dropna() # We drop rows with missing data to ensure a fair comparison
-        
-        valid_portfolio = False # We set the portfolio as unvalid by default, unless its weight's sum up to 100%
-        current_total = sum(weights.values())
-        
-        if tickers and not cleaned_df.empty and abs(current_total - 100.0) <= 0.1: # Those are the criteria for the portfolio to be valid
-            valid_portfolio = True # If the criteria are fulfilled, the portfolio is valid
-    
-            selected_tickers = cleaned_df[tickers] # We exclude the benchmark from the selected stocks
-            
-            daily_returns = selected_tickers.pct_change() # We calculate the daily returns for the individual stocks seleted
-            
-            final_weights = [weights[t] / 100.0 for t in tickers] # We divide the chosen weights by 100 to get the percentages
-            
-            portfolio_ret = daily_returns.dot(final_weights) # We calculate the portfolio return. The dot-product weighs the single stock returns
-            
-            my_portfolio_price = (1 + portfolio_ret).cumprod() * 100 # We construct the portfolio price series
-            my_portfolio_price.iloc[0] = 100 # We norm it so that the start is at 100
-            
-            cleaned_df["💼 My Portfolio"] = my_portfolio_price # We add the portfolio to the main DataFrame
-
-        elif tickers and abs(current_total - 100.0) > 0.1:
-            st.warning("⚠️ 'My Portfolio' not calculated: Weights do not sum to 100%.") # If the portfolio weights do not sum to 100, this warning is shown
 
         # -----------------------------------------------------------------------------
-        # DYNAMIC KPI VISUALIZER
+        # DYNAMIC KPI VISUALIZER (USING DISPLAY DF)
         # -----------------------------------------------------------------------------
         st.subheader("📊 KPI Visualizer over Time")
         
-        if not cleaned_df.empty:
-            metric_options = [ # We create a dropdown-menu where users can compare the chosen stocks according to the 7 KPI's we defined
+        if not display_df.empty:
+            metric_options = [ 
                 "Cumulative Return (Indexed to 100)",
                 "Annualized Return (30-Day Rolling)",
                 "Volatility (30-Day Rolling)",
@@ -257,13 +272,13 @@ try:
             
             selected_metric = st.selectbox("Select Metric to Plot", metric_options)
             
-            returns = cleaned_df.pct_change().dropna() # We calculate the Daily Returns, as we need it for the other KPI's
-            window = 30 # For the rolling calculations, we set a window size of 30 days
+            # Use display_df for visual analysis
+            returns = display_df.pct_change().dropna() 
+            window = 30 
             
-            # We set up a logic that calculates the time series for the chosen KPI. The calculations are the same as for the calculate_KPI function constructed earlier.
-            # The difference is that we now need a time series plot instead of only one value for each stock and KPI.
             if selected_metric == "Cumulative Return (Indexed to 100)":
-                plot_data = cleaned_df / cleaned_df.iloc[0] * 100
+                # Re-index to 100 for the start of the visible period
+                plot_data = display_df / display_df.iloc[0] * 100
                 
             elif selected_metric == "Annualized Return (30-Day Rolling)":
                 plot_data = returns.rolling(window=window).mean() * 252
@@ -292,27 +307,24 @@ try:
                 plot_data = returns.rolling(window=window).quantile(0.05)
 
 
-            plot_data = plot_data.rename(columns=lambda x: smi_companies.get(x, x)) # The lambda function makes sure that the full company names are shown instead of the ticker symbols.
-            
-            st.line_chart(plot_data) # We create a line chart that shows the time series of the selected stocks and KPI.
+            plot_data = plot_data.rename(columns=lambda x: smi_companies.get(x, x)) 
+            st.line_chart(plot_data) 
             
         else:
-            st.info("Not enough shared data points to plot a comparison. Try adjusting dates.") # This comes up if there is no data in the cleaned_df.
+            st.info("Not enough shared data points to plot a comparison. Try adjusting dates.") 
 
         # -----------------------------------------------------------------------------
-        # CALCULATE RISK & RETURN METRICS
+        # CALCULATE RISK & RETURN METRICS (USING DISPLAY DF)
         # -----------------------------------------------------------------------------
-        # Our goal here is to create a scatterplot where the user can compare two different metrices to each other. This will allow to make a risk-return-analysis.
         st.subheader("📉 Risk & Return Analysis")
         
-        metrics_df = calculate_KPI(cleaned_df) # We call the helper function 
+        metrics_df = calculate_KPI(display_df) 
         
-        metrics_df = metrics_df.rename(index=lambda x: smi_companies.get(x, x)) # The lambda function makes sure that the full company names are shown instead of the ticker symbols.
+        metrics_df = metrics_df.rename(index=lambda x: smi_companies.get(x, x)) 
 
-        metrics_df.index.name = "Stock" # We name the index "Stock".
-        scatter_data = metrics_df.reset_index() # We reset the index so that "Stock" is a column, not an index.
+        metrics_df.index.name = "Stock" 
+        scatter_data = metrics_df.reset_index() 
         
-        # We map the internal column names to labels for the chart
         col_mapping = {
             'Ann. Return': 'Annualized Return',
             'Cumulative Return': 'Cumulative Return',
@@ -323,25 +335,21 @@ try:
             'Value at Risk (95%)': 'Value at Risk 95%'
         }
         
-        scatter_data = scatter_data.rename(columns=col_mapping) # We rename the columns in our data to match the new labels
+        scatter_data = scatter_data.rename(columns=col_mapping) 
 
-        st.markdown("##### Compare Metrics (Scatter Plot)") # This is the title of the scatter plot.
-        col_x, col_y = st.columns(2) # We create the two columns to pick the values for the x and y axes.
+        st.markdown("##### Compare Metrics (Scatter Plot)") 
+        col_x, col_y = st.columns(2) 
         
-        chart_opts = list(col_mapping.values()) # We create the list of the available metrics to get the chart options afterwards.
+        chart_opts = list(col_mapping.values()) 
         
-        # We create the dropdown menu.
-        # We set the Annualized Volatility and Anualized Return as the default metrics
         with col_x:
             x_axis = st.selectbox("X-Axis", chart_opts, index=chart_opts.index('Annualized Volatility'))
         with col_y:
             y_axis = st.selectbox("Y-Axis", chart_opts, index=chart_opts.index('Annualized Return'))
             
-        # We use dynamic formatting so that if the user selects the Sharepe or Sortino ratio, it is displayed as a number. The other metrics are displayed as a percentage.
         x_format = ".2f" if "Ratio" in x_axis else "%"
         y_format = ".2f" if "Ratio" in y_axis else "%"
         
-        # We create the Altair chart.
         chart = alt.Chart(scatter_data).mark_circle(size=100).encode(
             x=alt.X(x_axis, title=x_axis, axis=alt.Axis(format=x_format)),
             y=alt.Y(y_axis, title=y_axis, axis=alt.Axis(format=y_format)),
@@ -349,9 +357,8 @@ try:
             tooltip=['Stock'] + chart_opts
         ).interactive() 
         
-        st.altair_chart(chart, use_container_width=True) # We load the chart in streamlit
+        st.altair_chart(chart, use_container_width=True) 
         
-        # We format the summary table. The numbers are rounded to two decimal places.
         formatted_metrics = metrics_df.style.format({
             'Ann. Return': '{:.2%}',
             'Cumulative Return': '{:.2%}',
@@ -362,120 +369,66 @@ try:
             'Value at Risk (95%)': '{:.2%}'
         })
         
-        st.markdown("##### Detailed Metrics Table") # This is the title of the table.
-        st.dataframe(formatted_metrics) # We create the table with the KPI's for the selected stocks.
+        st.markdown("##### Detailed Metrics Table") 
+        st.dataframe(formatted_metrics) 
 
         # -----------------------------------------------------------------------------
-        # MACHINE LEARNING
+        # MACHINE LEARNING (USING FULL HISTORY)
         # -----------------------------------------------------------------------------
-        st.markdown("---") # We put a line between the metrics table and the ML-part
-        st.header("🤖 Machine Learning: Volatility Prediction") # This is the title of the ML-part
+        st.markdown("---") 
+        st.header("🤖 Machine Learning: Volatility Prediction") 
         
         st.write("""
         This model predicts the **Exact Volatility** (Absolute Daily Return) for the next trading day.
         It uses the past 21 days of volatility to learn patterns using a Random Forest Regressor.
-        For the volatility prediction to function, you need to choose a data 
-        """) # Description of the ML-part.
+        """) 
         
-        # The user has to select a stock for the volatility forecasting
-        ml_opts = list(cleaned_df.columns) # The options to choose from are the selected stocks, aswell as the created portfolio.
-        ml_ticker = st.selectbox("Select Stock to Predict", ml_opts, format_func=lambda x: smi_companies.get(x, x)) # We create a ticker to select the stocks. The lambda function makes sure that the full company names are shown instead of the ticker symbols.
+        # User selects stock (options based on cleaned_df which has portfolio)
+        ml_opts = list(cleaned_df.columns) 
+        ml_ticker = st.selectbox("Select Stock to Predict", ml_opts, format_func=lambda x: smi_companies.get(x, x)) 
         
         if ml_ticker:
-            # We initialize a variable to store the data for the Machine Learning Model
-            ml_data = None
+            # IMPORTANT: We use 'cleaned_df' here, which has the FULL 2-year history
+            # This ensures ML always works even if 'display_df' is short.
+            subset_series = cleaned_df[ml_ticker].dropna()
             
-            # CHECK: Do we have enough data in the current view?
-            # 252 trading days = 1 year. This is a safe amount for a robust model.
-            # If the user selected a short period (e.g. 1 month), we fetch longer history in the background.
-            if len(cleaned_df) < 252:
-                extended_start = pd.Timestamp.today() - pd.DateOffset(months=12) # We set the start date to 12 months ago to get ~1 year of data.
-                
-                # CASE 1: The user selected "My Portfolio"
-                if ml_ticker == "💼 My Portfolio":
-                    # We need to re-download the components and re-calculate the portfolio for the extended period.
-                    if tickers: # Ensure we have tickers to download
-                        with st.spinner("Fetching extended history for Portfolio ML model..."): # Show a loading spinner
-                            # Download extended history for all components
-                            ext_stock_data = load_data(tickers, extended_start, pd.Timestamp.today())
-                            ext_clean = ext_stock_data.dropna()
-                            
-                            if not ext_clean.empty:
-                                # Re-calculate portfolio weights using the values from the sidebar
-                                current_total_w = sum(weights.values())
-                                if current_total_w == 0:
-                                     norm_weights = {t: 1.0/len(tickers) for t in tickers}
-                                else:
-                                     norm_weights = {t: weights[t]/current_total_w for t in tickers}
-                                
-                                # Create a list of weights aligned with the columns of the extended data
-                                w_list = [norm_weights[c] for c in ext_clean.columns]
-                                
-                                # Calculate portfolio returns
-                                ext_daily_ret = ext_clean.pct_change()
-                                ext_port_ret = ext_daily_ret.dot(w_list)
-                                
-                                # Create synthetic price series (start at 100)
-                                ext_port_price = (1 + ext_port_ret).cumprod() * 100
-                                ext_port_price.iloc[0] = 100
-                                
-                                ml_data = ext_port_price # Assign this new long series to ml_data
-                
-                # CASE 2: The user selected a regular stock (or Benchmark)
-                else:
-                    with st.spinner(f"Fetching extended history for {ml_ticker}..."):
-                        # Download extended history for just this one stock
-                        ext_df = load_data([ml_ticker], extended_start, pd.Timestamp.today())
-                        if not ext_df.empty:
-                            # Handle potential format issues (Series vs DataFrame)
-                            ml_data = ext_df[ml_ticker] if isinstance(ext_df, pd.DataFrame) else ext_df
-
-            # FALLBACK: If we didn't need extended data, or if the extended download failed, use the existing data.
-            if ml_data is None:
-                ml_data = cleaned_df[ml_ticker]
-
-            # Prepare the final series for the helper function
-            subset_series = ml_data.dropna()
+            X, y = prepare_regression_data(subset_series) 
             
-
-            X, y = prepare_regression_data(subset_series) # We use the helper function we defined earlier.
-            
-            if len(X) > 50: # We use at least 50 data points (days) for the model.
-                split_index = int(len(X) * 0.8) # We split the model into 80% trainig data and 20% testing data
+            if len(X) > 50: 
+                split_index = int(len(X) * 0.8) 
                 X_train, X_test = X.iloc[:split_index], X.iloc[split_index:]
                 y_train, y_test = y.iloc[:split_index], y.iloc[split_index:]
                 
-                model = RandomForestRegressor(n_estimators=100, random_state=42) # We implement a regressor which uses 100 different analyses.
-                model.fit(X_train, y_train) # We train the model. It looks at the past volatility patterns (X_train) and the actual volatility of the next day (y_train).
+                model = RandomForestRegressor(n_estimators=100, random_state=42) 
+                model.fit(X_train, y_train) 
                 
-                preds = model.predict(X_test) # We make our prediction by taking the average of all 100 analyses.
-                mae = mean_absolute_error(y_test, preds) # We compute the mean absolute error.
+                preds = model.predict(X_test) 
+                mae = mean_absolute_error(y_test, preds) 
                 
-                st.markdown(f"#### Volatility Forecast for **{smi_companies.get(ml_ticker, ml_ticker)}**") # This renders a sub-header, including the picked stock.
+                st.markdown(f"#### Volatility Forecast for **{smi_companies.get(ml_ticker, ml_ticker)}**") 
                 
-                # Show the predicted volatility for the NEXT day (using the very latest data)
-                last_21_days = X.iloc[-1:].values # We grab the last rows of our table, which includes the volatility of the past few days.
-                next_day_pred = model.predict(last_21_days)[0] # The next day prediction is the last value.
+                # Predict Next Day
+                last_21_days = X.iloc[-1:].values 
+                next_day_pred = model.predict(last_21_days)[0] 
                 
-                col1, col2 = st.columns(2) # We create two columns to show the predicted volatility and the MAE.
+                col1, col2 = st.columns(2) 
                 col1.metric("Predicted Volatility (Next Day)", f"{next_day_pred:.2%}")
                 col2.metric("Mean Absolute Error (Test Set)", f"{mae:.2%}")
 
-                # We create a DataFrame for the line chart.
+                # Chart for ML (Test Set Only)
                 results_df = pd.DataFrame({
-                    'Date': y_test.index, # The calendar dates of the test set.
-                    'Actual Volatility': y_test.values, # The actual volatility that occured.
-                    'Predicted Volatility': preds # The volatility our model guessed.
-                }).set_index('Date') # The date column is the index so that it becomes the x-axis of the chart.
+                    'Date': y_test.index, 
+                    'Actual Volatility': y_test.values, 
+                    'Predicted Volatility': preds 
+                }).set_index('Date') 
                 
-                st.write("**Predicted vs. Actual Volatility (Test Set):**") # We add this label above the graph.
-                st.line_chart(results_df) # We draw tha chart.
+                st.write("**Predicted vs. Actual Volatility (Test Set):**") 
+                st.line_chart(results_df) 
                 
-                # We add a caption to the model, explaining how to interpret the values.
                 st.caption("The lower the ratio of MAE to Volatility, the more accurate our model is. If the lines overlap, the model is doing a good job.")
                 
             else:
-                st.warning("Not enough data. Try a longer date range.") # If there is not enough data selected, this warning occurs.
+                st.warning("Not enough data. Try a longer date range.") 
 
 except Exception as e:
-    st.error(f"An error occurred: {e}") # If there is any problem in the main app logic, this occurs.
+    st.error(f"An error occurred: {e}")
