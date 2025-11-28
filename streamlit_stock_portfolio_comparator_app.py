@@ -295,16 +295,12 @@ try:
         # Our goal here is to create a scatterplot where the user can compare two different metrices to each other. This will allow to make a risk-return-analysis.
         st.subheader("📉 Risk & Return Analysis")
         
-        # 1. Call helper function
         metrics_df = calculate_KPI(cleaned_df) # We call the helper function 
         
         metrics_df = metrics_df.rename(index=lambda x: smi_companies.get(x, x)) # The lambda function makes sure that the full company names are shown instead of the ticker symbols.
 
-        # 3. SCATTER PLOT CONFIGURATION
-        # Prepare data for Altair: Reset index so 'Company' is a column, not an index.
-        # Explicitly name the index 'Company' to avoid "None" or "Ticker" errors.
-        metrics_df.index.name = "Stock"
-        scatter_data = metrics_df.reset_index()
+        metrics_df.index.name = "Stock" # We name the index "Stock".
+        scatter_data = metrics_df.reset_index() # We reset the index so that "Stock" is a column, not an index.
         
         # Map the internal column names to nice labels for the chart
         # We replace dots with spaces or underscores to avoid Altair errors
