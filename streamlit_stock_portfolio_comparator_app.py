@@ -64,10 +64,15 @@ def calculate_KPI(df): #
     
     return summary
 
-def prepare_regression_data(series, window=21):
+def prepare_regression_data(series, window=21, horizon=1):
     """
     For the Machine Learning part, we want to predict next-day absolute return (volatility) of a stock.
     We use the absolute returns of the last trading month (21 days) for this.
+    
+    Added 'horizon' parameter:
+    - horizon=1: Predict next day's volatility.
+    - horizon=5: Predict average volatility over the next 5 days (1 Week).
+    - horizon=21: Predict average volatility over the next 21 days (1 Month).
     """
     # Robust check: If input is already a DataFrame, use it directly. If Series, convert.
     if isinstance(series, pd.DataFrame):
@@ -78,9 +83,23 @@ def prepare_regression_data(series, window=21):
         df = series.to_frame(name='Close') 
         
     df['Abs_Return'] = df['Close'].pct_change().abs() # We calculate the absolute daily returns
-    df['Target'] = df['Abs_Return'].shift(-1) # We create a new DataFrame to predict tomorrow's volatility using today's data
+    
+    # TARGET CREATION:
+    # If horizon is 1, we just shift by -1 (tomorrow).
+    # If horizon is > 1, we calculate the rolling average of the FUTURE and shift it back.
+    if horizon == 1:
+        df['Target'] = df['Abs_Return'].shift(-1)
+    else:
+        # Calculate rolling mean of the NEXT 'horizon' days.
+        # .rolling() looks backwards, so we calculate it first, then shift backwards by 'horizon'.
+        # This aligns "today's row" with the "average of the next N days".
+        indexer = pd.api.indexers.FixedForwardWindowIndexer(window_size=horizon)
+        df['Target'] = df['Abs_Return'].rolling(window=indexer).mean()
+
+    # Features: Recent volatility (Lag 1 to Lag 21)
     for i in range(1, window + 1): # We start a loop which will run 21 times
         df[f'Vol_Lag_{i}'] = df['Abs_Return'].shift(i) # We create new columns for the volatility of each day  
+    
     df = df.dropna() # We remove any row that has missing data to avoid a crash of the model
     feature_cols = [f'Vol_Lag_{i}' for i in range(1, window + 1)] # This creates a list of the column names we created
     return df[feature_cols], df['Target'] # The function returns two separate tables, one containing the lag-columns, one containing the "Target". 
@@ -379,20 +398,30 @@ try:
         st.header("🤖 Machine Learning: Volatility Prediction") 
         
         st.write("""
-        This model predicts the **Exact Volatility** (Absolute Daily Return) for the next trading day.
+        This model predicts the **Exact Volatility** (Average Absolute Daily Return) over a specific time horizon.
         It uses the past 21 days of volatility to learn patterns using a Random Forest Regressor.
         """) 
         
         # User selects stock (options based on cleaned_df which has portfolio)
         ml_opts = list(cleaned_df.columns) 
-        ml_ticker = st.selectbox("Select Stock to Predict", ml_opts, format_func=lambda x: smi_companies.get(x, x)) 
+        col_ml_1, col_ml_2 = st.columns(2)
         
+        with col_ml_1:
+            ml_ticker = st.selectbox("Select Stock to Predict", ml_opts, format_func=lambda x: smi_companies.get(x, x)) 
+        
+        with col_ml_2:
+            # Dropdown for Forecast Horizon
+            horizon_dict = {"Next Day": 1, "Next Week (5 Days)": 5, "Next Month (21 Days)": 21}
+            horizon_label = st.selectbox("Select Forecast Horizon", list(horizon_dict.keys()))
+            horizon_val = horizon_dict[horizon_label]
+
         if ml_ticker:
             # IMPORTANT: We use 'cleaned_df' here, which has the FULL 2-year history
             # This ensures ML always works even if 'display_df' is short.
             subset_series = cleaned_df[ml_ticker].dropna()
             
-            X, y = prepare_regression_data(subset_series) 
+            # Pass the selected horizon to the helper function
+            X, y = prepare_regression_data(subset_series, window=21, horizon=horizon_val)
             
             if len(X) > 50: 
                 split_index = int(len(X) * 0.8) 
@@ -405,14 +434,14 @@ try:
                 preds = model.predict(X_test) 
                 mae = mean_absolute_error(y_test, preds) 
                 
-                st.markdown(f"#### Volatility Forecast for **{smi_companies.get(ml_ticker, ml_ticker)}**") 
+                st.markdown(f"#### Volatility Forecast for **{smi_companies.get(ml_ticker, ml_ticker)}** ({horizon_label})") 
                 
-                # Predict Next Day
+                # Predict Next Period
                 last_21_days = X.iloc[-1:].values 
-                next_day_pred = model.predict(last_21_days)[0] 
+                next_val_pred = model.predict(last_21_days)[0] 
                 
                 col1, col2 = st.columns(2) 
-                col1.metric("Predicted Volatility (Next Day)", f"{next_day_pred:.2%}")
+                col1.metric(f"Predicted Volatility ({horizon_label})", f"{next_val_pred:.2%}")
                 col2.metric("Mean Absolute Error (Test Set)", f"{mae:.2%}")
 
                 # Chart for ML (Test Set Only)
@@ -422,7 +451,7 @@ try:
                     'Predicted Volatility': preds 
                 }).set_index('Date') 
                 
-                st.write("**Predicted vs. Actual Volatility (Test Set):**") 
+                st.write(f"**Predicted vs. Actual Volatility ({horizon_label}):**") 
                 st.line_chart(results_df) 
                 
                 st.caption("The lower the ratio of MAE to Volatility, the more accurate our model is. If the lines overlap, the model is doing a good job.")
