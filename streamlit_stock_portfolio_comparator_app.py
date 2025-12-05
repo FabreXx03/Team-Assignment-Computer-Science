@@ -256,7 +256,9 @@ try:
         # CREATE DISPLAY DATAFRAME (FILTERED BY USER DATE)
         # -----------------------------------------------------------------------------
         # Now we slice the data to show ONLY what the user asked for in the charts/tables
-        display_df = cleaned_df.loc[start_date:end_date]
+        display_start = pd.Timestamp(start_date).tz_localize(None)
+        display_end = pd.Timestamp(end_date).tz_localize(None)
+        display_df = cleaned_df.loc[display_start:display_end]
 
         # Raw Data Preview (Using Display DF)
         with st.expander("📄 View Last 21 Trading Days"): 
