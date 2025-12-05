@@ -143,7 +143,7 @@ with st.sidebar: # We use st.sidebar to place everything inside this block on th
         "Select Stocks", 
         options=selectable_tickers, 
         format_func=lambda x: f"{smi_companies[x]} ({x})", # We include a lambda function so that the full company names are shown instead of the ticker symbols.
-        default=["NESN.SW", "ROG.SW", "UBSG.SW"]  # By default, the stocks of Nestle, Roche and UBS Group will be selected.
+        default=["NESN.SW", "NOVN.SW", "UBSG.SW"]  # By default, the stocks of Nestle, Roche and UBS Group will be selected.
     )
 
     # 2. DATE SELECTION 
