@@ -14,7 +14,7 @@ from sklearn.ensemble import RandomForestRegressor # We need Sklearn for the Mac
 from sklearn.metrics import mean_absolute_error # We need Sklearn for the Machine Learning part.
 
 # This must be the first Streamlit command. It sets up the page title and layout.
-st.set_page_config(page_title="SMI Stock & Portfolio Comparator", layout="wide") # This sets up the page title in the browser.
+st.set_page_config(page_title="The Extra SMIle", layout="wide") # This sets up the page title in the browser.
 
 # -----------------------------------------------------------------------------
 # HELPER FUNCTIONS
@@ -119,7 +119,9 @@ def load_data(ticker_list, start, end): # We define a function to download the d
 # MAIN LAYOUT & CONTROLS
 # -----------------------------------------------------------------------------
 
-st.title("SMI Stock & Portfolio Comparator") # This is the main title of the app.
+st.title("The Extra SMIle") # This is the main title of the app.
+
+st.caption("*Going the extra SMIle for your returns.*") # This is our slogan.
 
 # We split the page into four different latches to make it more user-friendly.
 page = st.radio("Navigation", ["Guide", "KPI Visualizer", "Risk & Correlation", "Volatility Forecasting"], horizontal=True, label_visibility="collapsed")
@@ -305,7 +307,7 @@ try:
             col_g1, col_g2, col_g3 = st.columns(3) # We create three columns, in which we describe the three further pages of the app.
             
             with col_g1:
-                st.info("**Controls**")
+                st.info("**KPI Visualizer**")
                 st.write("View historical performance over time. Compare your portfolio against the SMI Benchmark and visualize metrics like cumulative returns and volatility.")
                 
             with col_g2:
@@ -338,7 +340,7 @@ try:
             st.subheader("KPI Visualizer over Time")
             
             st.write("""
-            This plot shows the historical development of a chosen KPI over the selected time period. You also have the ability to download the raw price data of your selected assets.
+            This plot shows the historical development of a chosen KPI over the selected time period. You also have the opportunity to download the raw price data of your selected assets.
             """) 
             
             # Raw Data Preview
@@ -524,8 +526,8 @@ try:
             st.subheader("Volatility Prediction") 
             
             st.write("""
-            This model predicts the Volatility (Average Absolute Daily Return) over the chosen time horizon. The time horizon can be chosen between one day, one week (5 trading days) or one  month (21 trading days).
-            It uses the past 21 days of volatility to learn patterns using a Random Forest Regressor.
+            This model predicts the volatility (average absolute daily return) over the chosen time horizon. The time horizon can be chosen between one day, one week (5 trading days) or one  month (21 trading days).
+            It uses the past 21 days of volatility to learn patterns using a random forest regressor.
             """) 
             
             # The user has to select an asset for the volatility forecasting.
@@ -575,7 +577,7 @@ try:
                     st.line_chart(results_df) 
                     
                     # We add a caption to the model, explaining how to interpret the values.
-                    st.caption("The lower the ratio of MAE to Volatility, the more accurate our model is.")
+                    st.caption("The lower the ratio of MAE to volatility, the more accurate our model is.")
                     
                 else:
                     st.warning("Not enough data. Try a longer date range.") # If there is not enough data selected, this warning occurs.
