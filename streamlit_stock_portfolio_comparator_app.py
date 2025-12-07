@@ -1,8 +1,8 @@
+# This application was built using Google Gemini 3.0 Pro. We built the base code in cooperation with Google Gemini, modified and commented the code ourselves.
+
 # -----------------------------------------------------------------------------
 # IMPORTS & CONFIGURATION
 # -----------------------------------------------------------------------------
-
-# This application was built using Google Gemini. We created the base code in cooperation with Google Gemini, modified and commented the code ourselves.
 
 # We import the libraries we need.
 import streamlit as st # Streamlit is the framework we use to build the web app.
@@ -279,26 +279,42 @@ try:
             st.header("Welcome to the SMI Stock & Portfolio Comparator") # This is teh header of the page.
             
             st.markdown("""
-            This application is designed to help Investors look beyond simple price charts. 
+            This application is designed to help investors look beyond simple price charts. 
             It enables you to analyze historical performance, understand complex risk metrics, and forecast future volatility.
             This will help you to make better investment decisions.
             """) # We describe the main goal of the app.
             
-            st.subheader("How to use the App")
+            st.subheader("Sidebar Controls & Portfolio Builder")
+            
+            col_f1, col_f2, col_f3 = st.columns(3) # We create three columns, in which we describe the three further pages of the app.
+            
+            with col_f1:
+                st.info("**Controls**")
+                st.write("Pick the stocks you want to compare and want to build a portfolio with. Choose the start and end date of the analysis. The earliest date you might pick is 2010/01/01.")
+                
+            with col_f2:
+                st.warning("**Portfolio Builder**")
+                st.write("Assign weights to your selected stocks to build your own portfolio. You can then compare your portfolio to the single stocks and the SMI Benchmark in the analyses. Make sure your assigned weights sum up to 100% (0.1% tolerance).")
+                
+            with col_f3:
+                st.success("**Risk Free Rate Assumption**")
+                st.write("Choose your risk free rate. This rate is used for the calculation of the Sharpe and Sortino Ratios.")
+            
+            st.subheader("Analysis Pages")
             
             col_g1, col_g2, col_g3 = st.columns(3) # We create three columns, in which we describe the three further pages of the app.
             
             with col_g1:
-                st.info("**KPI Visualizer**")
-                st.write("View historical performance over time. Compare your portfolio against the SMI Benchmark and visualize metrics like Cumulative Returns and Volatility.")
+                st.info("**Controls**")
+                st.write("View historical performance over time. Compare your portfolio against the SMI Benchmark and visualize metrics like cumulative returns and volatility.")
                 
             with col_g2:
                 st.warning("**Risk & Correlation**")
-                st.write("Dive deep into the Risk-Return relationship. Use the Scatter Plot to find the 'Efficient Frontier' and use the Correlation Matrix to check if your stocks are diversified.")
+                st.write("Dive deep into the risk-return relationship. Use the scatter plot to find the 'efficient frontier' and use the correlation matrix to check if your stocks are diversified.")
                 
             with col_g3:
                 st.success("**Volatility Forecasting**")
-                st.write("Use our Random Forest Machine Learning model to predict how volatile a stock might be in the future.")
+                st.write("Use our random forest machine learning model to predict how volatile a stock might be in the future.")
             
             st.markdown("---")
             st.subheader("Financial Glossary")
@@ -309,7 +325,7 @@ try:
                 * **Cumulative Return:** The total percentage change in the price of an investment over a specific period.
                 * **Annualized Return:** The geometric average amount of money earned by an investment each year over a given time period. It allows for comparison between investments held for different lengths of time.
                 * **Volatility:** A statistical measure of the dispersion of returns. High volatility means the price swings up and down drastically.
-                * **Sharpe Ratio:** Measures the performance of an investment compared to a risk-free asset, after adjusting for its risk.
+                * **Sharpe Ratio:** Measures the performance of an investment compared to a risk-free asset, after adjusting for its risk. (Formula: Excess Return / Volatility)
                 * **Sortino Ratio:** Similar to the Sharpe Ratio, but it only penalizes *negative* volatility (downside risk). It ignores upside volatility, which is usually good for investors.
                 * **Maximum Drawdown:** The maximum observed loss from a peak to a low of a portfolio, before a new peak is attained. It indicates the "worst case scenario" for holding a stock.
                 * **Value at Risk (95%):** Estimates how much a set of investments might lose on a single day (with a 95% confidence level), given normal market conditions. For example, if VaR is -2%, it means in 95 out of 100 days, you won't lose more than 2%.
